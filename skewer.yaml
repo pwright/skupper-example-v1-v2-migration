@@ -1,0 +1,238 @@
+title: Skupper Hello World using YAML
+subtitle: A minimal HTTP application deployed across Kubernetes clusters using Skupper
+overview: |
+  This example is a variant of [Skupper Hello World][hello-world] that
+  is deployed using YAML resource definitions instead of imperative
+  commands.
+
+  It contains two services:
+
+  * A backend service that exposes an `/api/hello` endpoint.  It
+    returns greetings of the form `Hi, <your-name>.  I am <my-name>
+    (<pod-name>)`.
+
+  * A frontend service that sends greetings to the backend and
+    fetches new greetings in response.
+
+  In this scenario, each service runs in a different Kubernetes
+  cluster.  The frontend runs in a namespace on cluster 1 called West,
+  and the backend runs in a namespace on cluster 2 called East.
+
+  <img src="images/entities.svg" width="640"/>
+
+  Skupper enables you to place the backend in one cluster and the
+  frontend in another and maintain connectivity between the two
+  services without exposing the backend to the public internet.
+
+  [hello-world]: https://github.com/skupperproject/skupper-example-hello-world
+sites:
+  west:
+    title: West
+    platform: kubernetes
+    namespace: west
+    env:
+      KUBECONFIG: ~/.kube/config-west
+  east:
+    title: East
+    platform: kubernetes
+    namespace: east
+    env:
+      KUBECONFIG: ~/.kube/config-east
+steps:
+  - title: Install Skupper in your clusters
+    preamble: |
+      Use the `kubectl apply` command to install the Skupper
+      controller in each cluster.
+    commands:
+      west:
+        - run: kubectl apply -f skupper.yaml
+          output: |
+            namespace/skupper-site-controller created
+            serviceaccount/skupper-site-controller created
+            clusterrole.rbac.authorization.k8s.io/skupper-site-controller created
+            clusterrolebinding.rbac.authorization.k8s.io/skupper-site-controller created
+            deployment.apps/skupper-site-controller created
+      east:
+        - run: kubectl apply -f skupper.yaml
+          output: |
+            namespace/skupper-site-controller created
+            serviceaccount/skupper-site-controller created
+            clusterrole.rbac.authorization.k8s.io/skupper-site-controller created
+            clusterrolebinding.rbac.authorization.k8s.io/skupper-site-controller created
+            deployment.apps/skupper-site-controller created
+  - standard: kubernetes/set_up_your_namespaces
+  - title: Apply your YAML resources
+    preamble: |
+      To configure our example sites and service bindings, we are
+      using the following resources:
+
+      West:
+
+      * [site.yaml](west/site.yaml) - Skupper configuration for West
+      * [frontend.yaml](west/frontend.yaml) - The Hello World frontend
+
+      East:
+
+      * [site.yaml](east/site.yaml) - Skupper configuration for East
+      * [backend.yaml](east/backend.yaml) - The Hello World backend
+
+      Let's look at some of these resources in more detail.
+
+      #### Resources in West
+
+      The `site` ConfigMap defines a Skupper site for its associated
+      Kubernetes namespace.  This is where you set site configuration
+      options.  See the [config reference][config] for more
+      information.
+
+      [config]: https://skupper.io/docs/yaml/index.html
+
+      [site.yaml](west/site.yaml):
+
+      ~~~ yaml
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: skupper-site
+      data:
+        name: west
+      ~~~
+
+      #### Resources in East
+
+      Like the one for West, here is the Skupper site definition for
+      the East.  It includes the `ingress: none` setting since no
+      ingress is required at this site for the Hello World example.
+
+      [site.yaml](east/site.yaml):
+
+      ~~~ yaml
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: skupper-site
+      data:
+        name: east
+        ingress: none
+      ~~~
+
+      In East, the `backend` deployment has an annotation named
+      `skupper.io/proxy` with the value `tcp`.  This tells Skupper to
+      expose the backend on the Skupper network.  As a consequence,
+      the frontend in West will be able to see the backend and call
+      its API.
+
+      [backend.yaml](east/backend.yaml):
+
+      <pre>apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: backend
+        labels:
+          app: backend
+        <b>annotations:
+          skupper.io/proxy: tcp</b>
+      spec:
+        selector:
+          matchLabels:
+            app: backend
+        replicas: 3
+        template:
+          metadata:
+            labels:
+              app: backend
+          spec:
+            containers:
+              - name: backend
+                image: quay.io/skupper/hello-world-backend
+                ports:
+                  - containerPort: 8080</pre>
+
+      Now we're ready to apply everything.  Use the `kubectl apply`
+      command with the resource definitions for each site.
+
+      **Note:** If you are using Minikube, [you need to start
+      `minikube tunnel`][minikube-tunnel] before you create the
+      Skupper sites.
+
+      [minikube-tunnel]: https://skupper.io/start/minikube.html#running-minikube-tunnel
+    commands:
+      west:
+        - run: kubectl apply -f west/site.yaml -f west/frontend.yaml
+          output: |
+            configmap/skupper-site created
+            deployment.apps/frontend created
+        - await_resource: deployment/skupper-service-controller
+        - await_resource: deployment/frontend
+      east:
+        - run: kubectl apply -f east/site.yaml -f east/backend.yaml
+          output: |
+            configmap/skupper-site created
+            deployment.apps/backend created
+        - await_resource: deployment/skupper-service-controller
+        - await_resource: deployment/backend
+  - standard: link_your_sites
+    preamble: |
+      You can configure sites and service bindings declaratively, but
+      linking sites is different.  To create a link, you must have the
+      authentication secret and connection details of the remote site.
+      Since these cannot be known in advance, linking must be
+      procedural.
+
+      <!--
+      **Note:** There are several ways to automate the generation and
+      distribution of tokens across sites, using for example Ansible,
+      Backstage, or Vault.  See [Token distribution][XXX] for more
+      information.
+      -->
+
+      This example uses the Skupper command-line tool to generate the
+      secret token in West and create the link in East.
+
+      To install the Skupper command:
+
+      ~~~ shell
+      curl https://skupper.io/install.sh | sh
+      ~~~
+
+      For more installation options, see [Installing
+      Skupper][install].
+
+      Once the command is installed, use `skupper token create` in
+      West to generate the token.  Then, use `skupper link create` in
+      East to create a link.
+
+      [install]: https://skupper.io/install/index.html
+  
+  
+  - title: Install V2 controller
+    preamble: |
+      Use the `kubectl apply` command to install the Skupper V2
+      controller clusterwide.
+    commands:
+      east:
+        - run: kubectl apply -f https://skupper.io/install.yaml
+
+  - title: Create a V2 site
+    preamble: |
+      Create a version 2 site where we install an attached connector.
+    commands:
+      east:
+        - run: kubectl create ns east-v2
+      east-v2:
+        - run: kubectl apply -f east-v2.yaml
+
+
+
+  - standard: hello_world/access_the_frontend
+  - standard: cleaning_up
+    commands:
+      west:
+        - run: kubectl delete -f west/site.yaml -f west/frontend.yaml
+        - run: kubectl delete -f skupper.yaml
+      east:
+        - run: kubectl delete -f east/site.yaml -f east/backend.yaml
+        - run: kubectl delete -f skupper.yaml
+          apply: readme
+        - run: kubectl delete -f skupper.yaml --ignore-not-found
+          apply: test
