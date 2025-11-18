@@ -1,6 +1,6 @@
 # Skupper Hello World using YAML
 
-[![main](https://github.com/ssorj/skupper-example-yaml/actions/workflows/main.yaml/badge.svg)](https://github.com/ssorj/skupper-example-yaml/actions/workflows/main.yaml)
+[![main](https://github.com/pwright/skupper-example-v1-v2-migration.git/actions/workflows/main.yaml/badge.svg)](https://github.com/pwright/skupper-example-v1-v2-migration.git/actions/workflows/main.yaml)
 
 #### A minimal HTTP application deployed across Kubernetes clusters using Skupper
 
@@ -19,7 +19,11 @@ across cloud providers, data centers, and edge sites.
 * [Step 2: Set up your namespaces](#step-2-set-up-your-namespaces)
 * [Step 3: Apply your YAML resources](#step-3-apply-your-yaml-resources)
 * [Step 4: Link your sites](#step-4-link-your-sites)
-* [Step 5: Access the frontend](#step-5-access-the-frontend)
+* [Step 5: Install V2 controller](#step-5-install-v2-controller)
+* [Step 6: Create V2 sites.](#step-6-create-v2-sites)
+* [Step 7: Link V2 sites.](#step-7-link-v2-sites)
+* [Step 8: Expose and consume the backend service.](#step-8-expose-and-consume-the-backend-service)
+* [Step 9: Access the frontend](#step-9-access-the-frontend)
 * [Cleaning up](#cleaning-up)
 * [Summary](#summary)
 * [Next steps](#next-steps)
@@ -27,28 +31,31 @@ across cloud providers, data centers, and edge sites.
 
 ## Overview
 
-This example is a variant of [Skupper Hello World][hello-world] that
+This example is a variant of [Skupper Hello World][hello-world] v1 that
 is deployed using YAML resource definitions instead of imperative
 commands.
 
 It contains two services:
 
-* A backend service that exposes an `/api/hello` endpoint.  It
+* A backend service that exposes an `/api/hello` endpoint in east ns.  It
   returns greetings of the form `Hi, <your-name>.  I am <my-name>
   (<pod-name>)`.
 
-* A frontend service that sends greetings to the backend and
+* A frontend service in west ns that sends greetings to the backend and
   fetches new greetings in response.
 
-In this scenario, each service runs in a different Kubernetes
-cluster.  The frontend runs in a namespace on cluster 1 called West,
-and the backend runs in a namespace on cluster 2 called East.
+After this v1 network is up and running, we create a v2 network:
 
-<img src="images/entities.svg" width="640"/>
+* A v2 site in the east-v2 ns with a connector to backend
+* A v2 site in the west-v2 ns with a new frontend deployment
 
-Skupper enables you to place the backend in one cluster and the
-frontend in another and maintain connectivity between the two
-services without exposing the backend to the public internet.
+This avoids clashes with the existing sites.
+
+Then we can create an attached connector to the backend service running in east.
+* AttachedConnector in east with a reference to the v2 site in east-v2
+* AttachedConnectorBinding in east-v2
+
+On the west-v2 namespace, we need to deploy a new frontend service to consume the backend service.
 
 [hello-world]: https://github.com/skupperproject/skupper-example-hello-world
 
@@ -341,7 +348,78 @@ to use `scp` or a similar tool to transfer the token securely.  By
 default, tokens expire after a single use or 15 minutes after
 creation.
 
-## Step 5: Access the frontend
+## Step 5: Install V2 controller
+
+Use the `kubectl apply` command to install the Skupper V2
+controller clusterwide.
+
+_**East:**_
+
+~~~ shell
+kubectl apply -f https://skupper.io/install.yaml
+~~~
+
+## Step 6: Create V2 sites.
+
+Create version 2 sites using YAML
+
+_**West:**_
+
+~~~ shell
+kubectl create ns west-v2
+kubectl apply -f west-v2.yaml
+~~~
+
+_**East:**_
+
+~~~ shell
+kubectl create ns east-v2
+kubectl apply -f east-v2.yaml
+sleep 30
+~~~
+
+## Step 7: Link V2 sites.
+
+Create a token from west and apply it in east.
+
+_**West:**_
+
+~~~ shell
+skupper2 token issue token-mig.yaml -n west-v2
+~~~
+
+_**East:**_
+
+~~~ shell
+skupper2 token redeem token-mig.yaml -n east-v2
+~~~
+
+## Step 8: Expose and consume the backend service.
+
+Create an attached connector for backend in east.
+Create a listener in new west-v2 namespace
+
+_**East:**_
+
+~~~ shell
+kubectl apply -f attached-connector.yaml
+kubectl apply -f attached-conn-binding.yaml
+~~~
+
+_**West:**_
+
+~~~ shell
+kubectl apply -f west/site.yaml -f west/frontend.yaml
+~~~
+
+_Sample output:_
+
+~~~ console
+$ kubectl apply -f west/site.yaml -f west/frontend.yaml
+deployment.apps/frontend created
+~~~
+
+## Step 9: Access the frontend
 
 In order to use and test the application, we need external access
 to the frontend.

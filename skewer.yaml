@@ -7,21 +7,25 @@ overview: |
 
   It contains two services:
 
-  * A backend service that exposes an `/api/hello` endpoint.  It
+  * A backend service that exposes an `/api/hello` endpoint in east ns.  It
     returns greetings of the form `Hi, <your-name>.  I am <my-name>
     (<pod-name>)`.
 
-  * A frontend service that sends greetings to the backend and
+  * A frontend service in west ns that sends greetings to the backend and
     fetches new greetings in response.
 
   After this v1 network is up and running, we create a v2 network:
 
-  * A v2 site in the east-v2 ns 
-  * A v2 site in the west-v2 ns
+  * A v2 site in the east-v2 ns with a connector to backend
+  * A v2 site in the west-v2 ns with a new frontend deployment
+  
   This avoids clashes with the existing sites.
 
   Then we can create an attached connector to the backend service running in east.
-  On the west side, we need to deploy a new frontend service to consume the backend service.
+  * AttachedConnector in east with a reference to the v2 site in east-v2
+  * AttachedConnectorBinding in east-v2
+
+  On the west-v2 namespace, we need to deploy a new frontend service to consume the backend service.
 
   [hello-world]: https://github.com/skupperproject/skupper-example-hello-world
 sites:
