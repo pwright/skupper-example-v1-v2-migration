@@ -1,0 +1,9 @@
+apiVersion: skupper.io/v2alpha1
+kind: Listener
+metadata:
+  name: backend
+  namespace: west-v2
+spec:
+  routingKey: backend-v2
+  host: backend-v2
+  port: 8080

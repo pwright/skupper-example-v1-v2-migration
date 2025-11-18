@@ -213,14 +213,43 @@ steps:
       east:
         - run: kubectl apply -f https://skupper.io/install.yaml
 
-  - title: Create a V2 site
+  - title: Create V2 sites.
     preamble: |
-      Create a version 2 site where we install an attached connector.
+      Create version 2 sites using YAML
     commands:
+      west:
+        - run: kubectl create ns west-v2
+        - await_resource: namespace/west-v2
+        - run: kubectl apply -f west-v2.yaml
       east:
         - run: kubectl create ns east-v2
-      east-v2:
+        - await_resource: namespace/east-v2
         - run: kubectl apply -f east-v2.yaml
+        - run: sleep 30
+
+  - title: Link V2 sites.
+    preamble: |
+      Create a token from west and apply it in east.
+    commands:
+      west:
+        - run: read a;skupper2 token issue token-mig.yaml
+      east:
+        - run: skupper2 token redeem token-mig.yaml
+
+  - title: Expose and consume the backend service.
+    preamble: |
+      Create an attached connector for backend in east.
+      Create a listener in new west-v2 namespace
+    commands:
+      east:
+        - run: kubectl apply -f attached-connector.yaml
+        - run: kubectl apply -f attached-conn-binding.yaml
+      west:
+        - run: kubectl apply -f west/site.yaml -f west/frontend.yaml
+          output: |
+            deployment.apps/frontend created
+
+
 
 
 
