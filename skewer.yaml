@@ -1,7 +1,7 @@
 title: Skupper Hello World using YAML
 subtitle: A minimal HTTP application deployed across Kubernetes clusters using Skupper
 overview: |
-  This example is a variant of [Skupper Hello World][hello-world] that
+  This example is a variant of [Skupper Hello World][hello-world] v1 that
   is deployed using YAML resource definitions instead of imperative
   commands.
 
@@ -14,15 +14,14 @@ overview: |
   * A frontend service that sends greetings to the backend and
     fetches new greetings in response.
 
-  In this scenario, each service runs in a different Kubernetes
-  cluster.  The frontend runs in a namespace on cluster 1 called West,
-  and the backend runs in a namespace on cluster 2 called East.
+  After this v1 network is up and running, we create a v2 network:
 
-  <img src="images/entities.svg" width="640"/>
+  * A v2 site in the east-v2 ns 
+  * A v2 site in the west-v2 ns
+  This avoids clashes with the existing sites.
 
-  Skupper enables you to place the backend in one cluster and the
-  frontend in another and maintain connectivity between the two
-  services without exposing the backend to the public internet.
+  Then we can create an attached connector to the backend service running in east.
+  On the west side, we need to deploy a new frontend service to consume the backend service.
 
   [hello-world]: https://github.com/skupperproject/skupper-example-hello-world
 sites:
@@ -232,9 +231,9 @@ steps:
       Create a token from west and apply it in east.
     commands:
       west:
-        - run: read a;skupper2 token issue token-mig.yaml
+        - run: skupper2 token issue token-mig.yaml -n west-v2
       east:
-        - run: skupper2 token redeem token-mig.yaml
+        - run: skupper2 token redeem token-mig.yaml -n east-v2
 
   - title: Expose and consume the backend service.
     preamble: |
